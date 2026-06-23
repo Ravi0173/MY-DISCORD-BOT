@@ -24,14 +24,12 @@ def keep_alive():
 keep_alive()
 
 # --- 2. Setup ---
-# Only load .env if it exists (local development)
 if os.path.exists('Bot.env'):
     load_dotenv(dotenv_path='Bot.env')
 
-# Check if keys exist
 token = os.getenv('DISCORD_TOKEN')
 if not token:
-    raise ValueError("DISCORD_TOKEN not found! Ensure it is set in your Render environment variables.")
+    raise ValueError("DISCORD_TOKEN not found!")
 
 client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=os.getenv('OPENAI_API_KEY'))
 
@@ -40,10 +38,9 @@ intents.members = True
 intents.message_content = True
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-# Configuration
 DB_NAME = "warnings.db"
 
-# --- 3. Database Initialization ---
+# --- 3. Database ---
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
@@ -65,19 +62,13 @@ def add_strike(user_id):
     conn.close()
     return count
 
-# --- 4. Load Words ---
-def get_bad_words():
-    combined_list = []
-    files = ["en.txt", "hi.txt"]
-    for filename in files:
-        if os.path.exists(filename):
-            with open(filename, "r", encoding="utf-8") as f:
-                combined_list.extend([line.strip().lower() for line in f if line.strip()])
-    return combined_list
+BAD_WORDS = []
+for filename in ["en.txt", "hi.txt"]:
+    if os.path.exists(filename):
+        with open(filename, "r", encoding="utf-8") as f:
+            BAD_WORDS.extend([line.strip().lower() for line in f if line.strip()])
 
-BAD_WORDS = get_bad_words()
-
-# --- 5. Events ---
+# --- 4. Events ---
 @bot.event
 async def on_ready():
     print(f'SUCCESS! Logged in as {bot.user}')
@@ -86,10 +77,14 @@ async def on_ready():
 async def on_message(message):
     if message.author.bot: return
 
+    # ADMIN OVERRIDE: Skip moderation for Admins
+    if message.author.guild_permissions.administrator:
+        await bot.process_commands(message)
+        return
+
     # Censor Logic
     content = message.content
     found = False
-    
     for word in BAD_WORDS:
         if word.lower() in content.lower():
             pattern = re.compile(re.escape(word), re.IGNORECASE)
@@ -98,19 +93,20 @@ async def on_message(message):
             
     if found:
         await message.delete()
-        await message.channel.send(f"{message.author.mention} said: {content}")
+        await message.channel.send(f"{message.author.mention} Watch your language!")
         
         strike_count = add_strike(message.author.id)
         
-        if strike_count >= 15:
-            await message.author.ban(reason="Repeated abusive language")
-        elif strike_count >= 10:
+        # MODERATION: Only trigger kick/ban at specific milestones
+        if strike_count == 10:
             await message.author.kick(reason="Abusive language threshold reached")
+        elif strike_count == 15:
+            await message.author.ban(reason="Repeated abusive language")
         return 
 
     await bot.process_commands(message)
 
-# --- 6. Commands ---
+# --- 5. Commands ---
 @bot.command()
 async def warnings(ctx, member: discord.Member = None):
     member = member or ctx.author

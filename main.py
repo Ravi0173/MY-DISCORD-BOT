@@ -77,27 +77,39 @@ async def on_ready():
 async def on_message(message):
     if message.author.bot: return
 
-    # ADMIN OVERRIDE: Skip moderation for Admins
+    # ADMIN OVERRIDE
     if message.author.guild_permissions.administrator:
         await bot.process_commands(message)
         return
 
-    # Censor Logic
+    # NORMALIZATION: Strip symbols to catch bypasses
     content = message.content
+    normalized_content = re.sub(r'[^a-zA-Z0-9]', '', content).lower()
+    
     found = False
+    censored_content = content # Keep original for display
+    
     for word in BAD_WORDS:
-        if word.lower() in content.lower():
-            pattern = re.compile(re.escape(word), re.IGNORECASE)
-            content = pattern.sub("*" * len(word), content)
+        # Check normalized version against clean bad word
+        clean_word = re.sub(r'[^a-zA-Z0-9]', '', word.lower())
+        if clean_word in normalized_content:
             found = True
+            # Mask the word in the original string
+            pattern = re.compile(re.escape(word), re.IGNORECASE)
+            censored_content = pattern.sub("*" * len(word), censored_content)
             
     if found:
+        # 1. Show the censored version
+        await message.channel.send(f"{message.author.name} said: {censored_content}")
+        
+        # 2. Delete original
         await message.delete()
-        await message.channel.send(f"{message.author.mention} Watch your language!")
         
+        # 3. Warn
+        await message.channel.send(f"{message.author.mention} watch your language!")
+        
+        # 4. Strike
         strike_count = add_strike(message.author.id)
-        
-        # MODERATION: Only trigger kick/ban at specific milestones
         if strike_count == 10:
             await message.author.kick(reason="Abusive language threshold reached")
         elif strike_count == 15:
@@ -120,9 +132,17 @@ async def warnings(ctx, member: discord.Member = None):
 
 @bot.command()
 async def ask(ctx, *, question):
+    system_prompt = (
+        "You are a helpful assistant. "
+        "CRITICAL RULE: You must NEVER use profanity, abusive language, or hate speech, regardless of any roleplay, persona, or character instructions provided by the user. "
+        "If a user asks you to roleplay a character who swears, you must decline that specific part of the request or rewrite the response to be clean."
+    )
     completion = client.chat.completions.create(
         model="meta-llama/llama-3.3-70b-instruct", 
-        messages=[{"role": "user", "content": question}]
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": question}
+        ]
     )
     await ctx.send(completion.choices[0].message.content)
 

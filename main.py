@@ -82,37 +82,26 @@ async def on_message(message):
         await bot.process_commands(message)
         return
 
-    # ADVANCED CENSOR LOGIC
-    content = message.content
+    # AGGRESSIVE CENSOR LOGIC
+    # Strip every single character that isn't a letter or number
+    # This turns "Nigg-a", "N@gg-a", "N i g g a" all into "nigga"
+    normalized = re.sub(r'[^a-zA-Z0-9]', '', message.content).lower()
+    
     found = False
-    
-    # Normalize: strip all symbols and spaces completely
-    normalized = re.sub(r'[^a-zA-Z0-9]', '', content).lower()
-    
-    # 1. Simple, strict check (Fastest)
     for word in BAD_WORDS:
+        # Clean the blacklist word to match the normalized message
         clean_word = re.sub(r'[^a-zA-Z0-9]', '', word.lower())
-        if clean_word in normalized:
+        if clean_word and clean_word in normalized:
             found = True
             break
             
-    # 2. Advanced check: Only if the simple check didn't find it (Pattern matching)
-    if not found:
-        for word in BAD_WORDS:
-            clean_word = re.sub(r'[^a-zA-Z0-9]', '', word.lower())
-            # Look for word letters separated by symbols
-            pattern_str = "[^a-zA-Z0-9]*".join(list(clean_word))
-            if re.search(pattern_str, normalized):
-                found = True
-                break
-
     if found:
-        # Show a clean placeholder instead of the user's message
-        await message.channel.send(f"{message.author.name} said: [Inappropriate content removed]")
+        # 1. Delete message immediately
         await message.delete()
+        # 2. Public warning
         await message.channel.send(f"{message.author.mention} Watch your language!")
         
-        # Strike logic
+        # 3. Strike logic
         strike_count = add_strike(message.author.id)
         if strike_count == 10:
             await message.author.kick(reason="Abusive language threshold reached")

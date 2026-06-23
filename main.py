@@ -89,14 +89,14 @@ async def on_message(message):
     # Normalize: strip all symbols and spaces completely
     normalized = re.sub(r'[^a-zA-Z0-9]', '', content).lower()
     
-    # 1. Simple, strict check
+    # 1. Simple, strict check (Fastest)
     for word in BAD_WORDS:
         clean_word = re.sub(r'[^a-zA-Z0-9]', '', word.lower())
         if clean_word in normalized:
             found = True
             break
             
-    # 2. Advanced check: Only if the simple check didn't find it
+    # 2. Advanced check: Only if the simple check didn't find it (Pattern matching)
     if not found:
         for word in BAD_WORDS:
             clean_word = re.sub(r'[^a-zA-Z0-9]', '', word.lower())

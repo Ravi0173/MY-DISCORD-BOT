@@ -8,7 +8,7 @@ from openai import OpenAI
 from flask import Flask
 from threading import Thread
 
-# --- Keep-Alive Web Server ---
+# --- 1. Keep-Alive Web Server ---
 app = Flask('')
 @app.route('/')
 def home():
@@ -23,14 +23,15 @@ def keep_alive():
 
 keep_alive()
 
-# --- 1. Setup ---
-# This will look for a .env file locally. On Render, it uses the Environment Variables.
-load_dotenv(dotenv_path='Bot.env')
+# --- 2. Setup ---
+# Only load .env if it exists (local development)
+if os.path.exists('Bot.env'):
+    load_dotenv(dotenv_path='Bot.env')
 
 # Check if keys exist
 token = os.getenv('DISCORD_TOKEN')
 if not token:
-    raise ValueError("DISCORD_TOKEN not found! Ensure it is set in your environment.")
+    raise ValueError("DISCORD_TOKEN not found! Ensure it is set in your Render environment variables.")
 
 client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=os.getenv('OPENAI_API_KEY'))
 
@@ -42,7 +43,7 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 # Configuration
 DB_NAME = "warnings.db"
 
-# --- 2. Database Initialization ---
+# --- 3. Database Initialization ---
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
@@ -64,7 +65,7 @@ def add_strike(user_id):
     conn.close()
     return count
 
-# --- 3. Load Words ---
+# --- 4. Load Words ---
 def get_bad_words():
     combined_list = []
     files = ["en.txt", "hi.txt"]
@@ -76,7 +77,7 @@ def get_bad_words():
 
 BAD_WORDS = get_bad_words()
 
-# --- 4. Events ---
+# --- 5. Events ---
 @bot.event
 async def on_ready():
     print(f'SUCCESS! Logged in as {bot.user}')
@@ -109,7 +110,7 @@ async def on_message(message):
 
     await bot.process_commands(message)
 
-# --- 5. Commands ---
+# --- 6. Commands ---
 @bot.command()
 async def warnings(ctx, member: discord.Member = None):
     member = member or ctx.author

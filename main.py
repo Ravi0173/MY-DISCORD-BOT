@@ -82,37 +82,38 @@ async def on_message(message):
         await bot.process_commands(message)
         return
 
-    # NORMALIZATION: Strip symbols to catch bypasses
+    # ADVANCED CENSOR LOGIC
     content = message.content
-    normalized_content = re.sub(r'[^a-zA-Z0-9]', '', content).lower()
-    
     found = False
-    censored_content = content # Keep original for display
+    censored_content = content 
     
+    # Normalize: strip symbols to catch bypasses
+    normalized = re.sub(r'[^a-zA-Z0-9]', '', content).lower()
+
     for word in BAD_WORDS:
-        # Check normalized version against clean bad word
+        # Create a flexible pattern that allows symbols between letters
+        # e.g., "f-u-c-k" -> f[^a-zA-Z0-9]*u[^a-zA-Z0-9]*c[^a-zA-Z0-9]*k
         clean_word = re.sub(r'[^a-zA-Z0-9]', '', word.lower())
-        if clean_word in normalized_content:
-            found = True
-            # Mask the word in the original string
-            pattern = re.compile(re.escape(word), re.IGNORECASE)
-            censored_content = pattern.sub("*" * len(word), censored_content)
-            
-    if found:
-        # 1. Show the censored version
-        await message.channel.send(f"{message.author.name} said: {censored_content}")
+        pattern_str = "[^a-zA-Z0-9]*".join(list(clean_word))
         
+        if re.search(pattern_str, normalized):
+            found = True
+            censored_content = f"||{content}|| (Inappropriate content detected)"
+            break 
+
+    if found:
+        # 1. Show moderated message
+        await message.channel.send(f"{message.author.name} said: {censored_content}")
         # 2. Delete original
         await message.delete()
-        
         # 3. Warn
-        await message.channel.send(f"{message.author.mention} watch your language!")
+        await message.channel.send(f"{message.author.mention} Watch your language!")
         
-        # 4. Strike
+        # 4. Strike logic
         strike_count = add_strike(message.author.id)
         if strike_count == 10:
             await message.author.kick(reason="Abusive language threshold reached")
-        elif strike_count == 15:
+        elif strike_count >= 15:
             await message.author.ban(reason="Repeated abusive language")
         return 
 

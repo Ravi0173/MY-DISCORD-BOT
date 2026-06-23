@@ -85,31 +85,34 @@ async def on_message(message):
     # ADVANCED CENSOR LOGIC
     content = message.content
     found = False
-    censored_content = content 
     
-    # Normalize: strip symbols to catch bypasses
+    # Normalize: strip all symbols and spaces completely
     normalized = re.sub(r'[^a-zA-Z0-9]', '', content).lower()
-
+    
+    # 1. Simple, strict check
     for word in BAD_WORDS:
-        # Create a flexible pattern that allows symbols between letters
-        # e.g., "f-u-c-k" -> f[^a-zA-Z0-9]*u[^a-zA-Z0-9]*c[^a-zA-Z0-9]*k
         clean_word = re.sub(r'[^a-zA-Z0-9]', '', word.lower())
-        pattern_str = "[^a-zA-Z0-9]*".join(list(clean_word))
-        
-        if re.search(pattern_str, normalized):
+        if clean_word in normalized:
             found = True
-            censored_content = f"||{content}|| (Inappropriate content detected)"
-            break 
+            break
+            
+    # 2. Advanced check: Only if the simple check didn't find it
+    if not found:
+        for word in BAD_WORDS:
+            clean_word = re.sub(r'[^a-zA-Z0-9]', '', word.lower())
+            # Look for word letters separated by symbols
+            pattern_str = "[^a-zA-Z0-9]*".join(list(clean_word))
+            if re.search(pattern_str, normalized):
+                found = True
+                break
 
     if found:
-        # 1. Show moderated message
-        await message.channel.send(f"{message.author.name} said: {censored_content}")
-        # 2. Delete original
+        # Show a clean placeholder instead of the user's message
+        await message.channel.send(f"{message.author.name} said: [Inappropriate content removed]")
         await message.delete()
-        # 3. Warn
         await message.channel.send(f"{message.author.mention} Watch your language!")
         
-        # 4. Strike logic
+        # Strike logic
         strike_count = add_strike(message.author.id)
         if strike_count == 10:
             await message.author.kick(reason="Abusive language threshold reached")

@@ -110,12 +110,12 @@ async def on_message(message):
         strike_count = add_strike(message.author.id)
         
         # Moderation Actions
-        if strike_count >= 15:
-            await message.author.ban(reason="Repeated abusive language")
-            await log_action(message.guild, "User BANNED", f"**User:** {message.author}\n**Reason:** Repeated abusive language (15+ strikes).")
-        elif strike_count >= 10:
-            await message.author.kick(reason="Abusive language threshold reached")
-            await log_action(message.guild, "User KICKED", f"**User:** {message.author}\n**Reason:** Abusive language threshold reached (10 strikes).")
+        if strike_count == 15:
+            await message.author.ban(reason="Repeated abusive language (15 strikes)")
+            await log_action(message.guild, "User BANNED", f"**User:** {message.author}\n**Reason:** Reached 15 strikes.")
+        elif strike_count == 10:
+            await message.author.kick(reason="Abusive language threshold reached (10 strikes)")
+            await log_action(message.guild, "User KICKED", f"**User:** {message.author}\n**Reason:** Reached 10 strikes.")
         else:
             await message.channel.send(f"Watch your language, {message.author.mention}! (Strike {strike_count})")
         

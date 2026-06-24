@@ -31,7 +31,7 @@ if not token:
     raise ValueError("DISCORD_TOKEN not found!")
 
 # REPLACE THIS WITH YOUR ACTUAL LOG CHANNEL ID
-LOG_CHANNEL_ID =  1519287894752231444
+LOG_CHANNEL_ID = 1519287894752231444 
 
 intents = discord.Intents.default()
 intents.members = True 
@@ -117,8 +117,8 @@ async def on_message(message):
             await message.author.kick(reason="Abusive language threshold reached")
             await log_action(message.guild, "User KICKED", f"**User:** {message.author}\n**Reason:** Abusive language threshold reached (10 strikes).")
         else:
-            await message.channel.send(f"Watch your language! (Strike {strike_count})")
-            await log_action(message.guild, "Warning Issued", f"**User:** {message.author}\n**Content:** {censored_content}\n**Strikes:** {strike_count}")
+            await message.channel.send(f"Watch your language, {message.author.mention}! (Strike {strike_count})")
+        
         return
 
     await bot.process_commands(message)

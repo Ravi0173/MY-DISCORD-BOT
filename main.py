@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands
+from discord import app_commands
 import os
 import sqlite3
 import re
@@ -30,7 +31,6 @@ token = os.getenv('DISCORD_TOKEN')
 if not token:
     raise ValueError("DISCORD_TOKEN not found!")
 
-# REPLACE THIS WITH YOUR ACTUAL LOG CHANNEL ID
 LOG_CHANNEL_ID = 1519287894752231444 
 
 intents = discord.Intents.default()
@@ -68,23 +68,49 @@ for filename in ["en.txt", "hi.txt"]:
         with open(filename, "r", encoding="utf-8") as f:
             BAD_WORDS.extend([line.strip().lower() for line in f if line.strip()])
 
-# --- 4. Helper: Logging ---
+# --- 4. Ticket System (Slash Commands) ---
+class TicketModal(discord.ui.Modal, title='Support Ticket'):
+    problem = discord.ui.TextInput(
+        label='Describe your problem',
+        style=discord.TextStyle.paragraph,
+        placeholder='Tell us what is happening...',
+        required=True,
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        guild = interaction.guild
+        # Set permissions: User can see, @everyone cannot
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(read_messages=False),
+            interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+            guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
+        }
+        channel = await guild.create_text_channel(f"ticket-{interaction.user.name}", overwrites=overwrites)
+        
+        embed = discord.Embed(title="New Support Ticket", color=discord.Color.blue())
+        embed.add_field(name="User", value=interaction.user.mention, inline=False)
+        embed.add_field(name="Issue", value=self.problem.value, inline=False)
+        await channel.send(embed=embed)
+        
+        await interaction.response.send_message(f"Ticket created: {channel.mention}", ephemeral=True)
+
+# --- 5. Helper: Logging ---
 async def log_action(guild, title, description, color=discord.Color.red()):
     log_channel = guild.get_channel(LOG_CHANNEL_ID)
     if log_channel:
         embed = discord.Embed(title=title, description=description, color=color)
         await log_channel.send(embed=embed)
 
-# --- 5. Events ---
+# --- 6. Events ---
 @bot.event
 async def on_ready():
+    await bot.tree.sync() # Syncs slash commands
     print(f'SUCCESS! Logged in as {bot.user}')
 
 @bot.event
 async def on_message(message):
     if message.author.bot: return
 
-    # ADMIN OVERRIDE
     if message.author.guild_permissions.administrator:
         await bot.process_commands(message)
         return
@@ -106,10 +132,8 @@ async def on_message(message):
     if found:
         await message.delete()
         await message.channel.send(f"{message.author.mention} said: {censored_content}")
-        
         strike_count = add_strike(message.author.id)
         
-        # Moderation Actions
         if strike_count == 15:
             await message.author.ban(reason="Repeated abusive language (15 strikes)")
             await log_action(message.guild, "User BANNED", f"**User:** {message.author}\n**Reason:** Reached 15 strikes.")
@@ -118,12 +142,15 @@ async def on_message(message):
             await log_action(message.guild, "User KICKED", f"**User:** {message.author}\n**Reason:** Reached 10 strikes.")
         else:
             await message.channel.send(f"Watch your language, {message.author.mention}! (Strike {strike_count})")
-        
         return
 
     await bot.process_commands(message)
 
-# --- 6. Commands ---
+# --- 7. Commands ---
+@bot.tree.command(name="ticket", description="Open a support ticket")
+async def ticket(interaction: discord.Interaction):
+    await interaction.response.send_modal(TicketModal())
+
 @bot.command()
 async def warnings(ctx, member: discord.Member = None):
     member = member or ctx.author

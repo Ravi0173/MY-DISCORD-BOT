@@ -82,32 +82,43 @@ async def on_message(message):
         await bot.process_commands(message)
         return
 
-    # AGGRESSIVE CENSOR LOGIC
-    # Strip every single character that isn't a letter or number
-    # This turns "Nigg-a", "N@gg-a", "N i g g a" all into "nigga"
-    normalized = re.sub(r'[^a-zA-Z0-9]', '', message.content).lower()
-    
+    content = message.content
+    censored_content = content
     found = False
+
+    # Check each bad word against the content
     for word in BAD_WORDS:
-        # Clean the blacklist word to match the normalized message
-        clean_word = re.sub(r'[^a-zA-Z0-9]', '', word.lower())
-        if clean_word and clean_word in normalized:
-            found = True
-            break
-            
-    if found:
-        # 1. Delete message immediately
-        await message.delete()
-        # 2. Public warning
-        await message.channel.send(f"{message.author.mention} Watch your language!")
+        # Create a regex that allows for symbols/spaces between letters
+        # This catches "f-u-c-k", "f.u.c.k", "f u c k"
+        clean_bad_word = re.sub(r'[^a-zA-Z0-9]', '', word.lower())
+        if not clean_bad_word: continue
         
-        # 3. Strike logic
+        # Build pattern: f[^a-zA-Z0-9]*u[^a-zA-Z0-9]*c[^a-zA-Z0-9]*k
+        pattern_str = "[^a-zA-Z0-9]*".join(list(clean_bad_word))
+        
+        if re.search(pattern_str, content, re.IGNORECASE):
+            found = True
+            # Replace found word with asterisks of the same length
+            pattern = re.compile(pattern_str, re.IGNORECASE)
+            censored_content = pattern.sub("*" * len(clean_bad_word), censored_content)
+
+    if found:
+        # 1. Send the censored version of the sentence
+        await message.channel.send(f"{message.author.name} said: {censored_content}")
+        
+        # 2. Delete the original message
+        await message.delete()
+        
+        # 3. Add strike and warn
         strike_count = add_strike(message.author.id)
+        await message.channel.send(f"{message.author.mention} Watch your language! (Strike {strike_count})")
+        
+        # Check for kick/ban
         if strike_count == 10:
             await message.author.kick(reason="Abusive language threshold reached")
         elif strike_count >= 15:
             await message.author.ban(reason="Repeated abusive language")
-        return 
+        return
 
     await bot.process_commands(message)
 

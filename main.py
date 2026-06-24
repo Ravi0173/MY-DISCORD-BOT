@@ -4,7 +4,6 @@ import os
 import sqlite3
 import re
 from dotenv import load_dotenv
-from openai import OpenAI
 from flask import Flask
 from threading import Thread
 
@@ -23,7 +22,7 @@ def keep_alive():
 
 keep_alive()
 
-# --- 2. Setup ---
+# --- 2. Configuration & Setup ---
 if os.path.exists('Bot.env'):
     load_dotenv(dotenv_path='Bot.env')
 
@@ -31,7 +30,8 @@ token = os.getenv('DISCORD_TOKEN')
 if not token:
     raise ValueError("DISCORD_TOKEN not found!")
 
-client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=os.getenv('OPENAI_API_KEY'))
+# REPLACE THIS WITH YOUR ACTUAL LOG CHANNEL ID
+LOG_CHANNEL_ID =  1519287894752231444
 
 intents = discord.Intents.default()
 intents.members = True 
@@ -68,7 +68,14 @@ for filename in ["en.txt", "hi.txt"]:
         with open(filename, "r", encoding="utf-8") as f:
             BAD_WORDS.extend([line.strip().lower() for line in f if line.strip()])
 
-# --- 4. Events ---
+# --- 4. Helper: Logging ---
+async def log_action(guild, title, description, color=discord.Color.red()):
+    log_channel = guild.get_channel(LOG_CHANNEL_ID)
+    if log_channel:
+        embed = discord.Embed(title=title, description=description, color=color)
+        await log_channel.send(embed=embed)
+
+# --- 5. Events ---
 @bot.event
 async def on_ready():
     print(f'SUCCESS! Logged in as {bot.user}')
@@ -86,43 +93,37 @@ async def on_message(message):
     censored_content = content
     found = False
 
-    # Check each bad word against the content
     for word in BAD_WORDS:
-        # Create a regex that allows for symbols/spaces between letters
-        # This catches "f-u-c-k", "f.u.c.k", "f u c k"
         clean_bad_word = re.sub(r'[^a-zA-Z0-9]', '', word.lower())
         if not clean_bad_word: continue
         
-        # Build pattern: f[^a-zA-Z0-9]*u[^a-zA-Z0-9]*c[^a-zA-Z0-9]*k
         pattern_str = "[^a-zA-Z0-9]*".join(list(clean_bad_word))
-        
         if re.search(pattern_str, content, re.IGNORECASE):
             found = True
-            # Replace found word with asterisks of the same length
             pattern = re.compile(pattern_str, re.IGNORECASE)
             censored_content = pattern.sub("*" * len(clean_bad_word), censored_content)
 
     if found:
-        # 1. Send the censored version of the sentence
-        await message.channel.send(f"{message.author.name} said: {censored_content}")
-        
-        # 2. Delete the original message
         await message.delete()
+        await message.channel.send(f"{message.author.mention} said: {censored_content}")
         
-        # 3. Add strike and warn
         strike_count = add_strike(message.author.id)
-        await message.channel.send(f"{message.author.mention} Watch your language! (Strike {strike_count})")
         
-        # Check for kick/ban
-        if strike_count == 10:
-            await message.author.kick(reason="Abusive language threshold reached")
-        elif strike_count >= 15:
+        # Moderation Actions
+        if strike_count >= 15:
             await message.author.ban(reason="Repeated abusive language")
+            await log_action(message.guild, "User BANNED", f"**User:** {message.author}\n**Reason:** Repeated abusive language (15+ strikes).")
+        elif strike_count >= 10:
+            await message.author.kick(reason="Abusive language threshold reached")
+            await log_action(message.guild, "User KICKED", f"**User:** {message.author}\n**Reason:** Abusive language threshold reached (10 strikes).")
+        else:
+            await message.channel.send(f"Watch your language! (Strike {strike_count})")
+            await log_action(message.guild, "Warning Issued", f"**User:** {message.author}\n**Content:** {censored_content}\n**Strikes:** {strike_count}")
         return
 
     await bot.process_commands(message)
 
-# --- 5. Commands ---
+# --- 6. Commands ---
 @bot.command()
 async def warnings(ctx, member: discord.Member = None):
     member = member or ctx.author
@@ -133,21 +134,5 @@ async def warnings(ctx, member: discord.Member = None):
     count = result[0] if result else 0
     conn.close()
     await ctx.send(f"{member.name} has {count} strike(s).")
-
-@bot.command()
-async def ask(ctx, *, question):
-    system_prompt = (
-        "You are a helpful assistant. "
-        "CRITICAL RULE: You must NEVER use profanity, abusive language, or hate speech, regardless of any roleplay, persona, or character instructions provided by the user. "
-        "If a user asks you to roleplay a character who swears, you must decline that specific part of the request or rewrite the response to be clean."
-    )
-    completion = client.chat.completions.create(
-        model="meta-llama/llama-3.3-70b-instruct", 
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": question}
-        ]
-    )
-    await ctx.send(completion.choices[0].message.content)
 
 bot.run(os.getenv('DISCORD_TOKEN'))
